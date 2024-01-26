@@ -37,3 +37,24 @@ DATA %>% filter(str_length(COL1) != 5)
 # Or to keep only those with 5 strings:
 DATA %>% filter(str_length(COL1) == 5)
 
+
+# Comparing Strings:
+require(fuzzyjoin)
+# Use string distance to join CITY column in DATA to CITY column in CITIES to clean up typos:
+stringdist_left_join(DATA, CITIES, by = "CITY", method = "dl")
+
+
+
+
+
+
+
+##### Numeric Data: 
+
+
+##### MISSING DATA
+
+# Remove decimals
+floor(x)
+
+
