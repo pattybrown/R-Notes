@@ -90,7 +90,55 @@ get_regression_points(model_price_2) %>%
   mutate(sq_residuals = residual^2) %>%
   summarize(sum_sq_residuals = sum(sq_residuals))
 
+######################################################################
 
+# Linear Regression in Caret
+
+# Test Train Split
+# Set seed
+set.seed(22)
+
+# Shuffle row indices: rows
+rows <- sample(nrow(diamonds))
+
+# Randomly order data
+shuffled_diamonds <- diamonds[rows, ]
+
+# Determine row to split on: split
+split <- round(nrow(diamonds) * 0.80)
+
+# Create train
+train <- diamonds[1:split, ]
+
+# Create test
+test <- diamonds[(split + 1):nrow(diamonds), ]
+
+# Fit lm model on train: model
+model <- lm(price ~ ., train)
+
+# Predict on test: p
+p <- predict(model, test)
+
+# Compute errors: error
+error <- p - test[["price"]]
+
+# Calculate RMSE
+sqrt(mean(error^2))
+
+# CROSS VALIDATION
+
+set.seed(22)
+
+model <- train(
+  price ~.,
+  diamonds,
+  method = "lm",
+  trControl = trainControl(
+    method = "cv",
+    number = 10,
+    verboseIter = TRUE
+  )
+)
 
 #####################################################################
 
@@ -134,10 +182,210 @@ get_regression_points(model_price_2) %>%
 
 
 
-#######################
-# Random Forests Models
-#######################
+##############################################################################
+
+# CLASSIFICATION MODELS WITH CARET  
+
+# Confustion Matrices: 
+
+# If p exceeds threshold of 0.9, M else R: m_or_r
+m_or_r <- ifelse(p > 0.9, "M", "R")
+
+# Convert to factor: p_class
+p_class <- factor(m_or_r, levels = levels(test[["Class"]]))
+
+# Create confusion matrix
+confusionMatrix(p_class, test[["Class"]])
+
+
+# The ROC Curve: 
+# Predict on test: p
+p <- predict(model, test, type = "response")
+# Make ROC curve
+colAUC(p, test[["Class"]], plotROC = TRUE)
+
+
+# Area under Curve: 
+# Create trainControl object: myControl
+myControl <- trainControl(
+  method = "cv",
+  number = 10,
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE, # IMPORTANT!
+  verboseIter = TRUE
+)
+
+#Now that you have a custom trainControl object, it's easy to fit caret models 
+#that use AUC rather than accuracy to tune and evaluate the model. You can just pass your 
+#custom trainControl object to the train() function via the trControl argument, e.g.:
+
+# Train glm with custom trainControl: model
+model <- train(
+  Class ~ ., 
+  Sonar, 
+  method = "glm",
+  trControl = myControl
+)
+
+# Print model to console
+model
+
+#############################################################################################
+
+# Random Forests Models 
+    # yield accurate, non-linear models
+
+# Fit random forest: model
+model <- train(
+  quality ~ .,
+  tuneLength = 1,
+  data = wine, 
+  method = "ranger",
+  trControl = trainControl(
+    method = "cv", 
+    number = 5, 
+    verboseIter = TRUE
+  )
+)
+
+# Print model to console
+model
+
+#suppose that a tree has a total of 10 splits and mtry = 2. This means that there are 10 
+#samples of 2 predictors each time a split is evaluated.Use a larger tuning grid this time, but 
+#stick to the defaults provided by the train() function. Try a tuneLength of 3, rather than 1, 
+#to explore some more potential models, and plot the resulting model using the plot function.
+
+# Fit random forest: model
+model <- train(
+  quality ~ .,
+  tuneLength = 3,
+  data = wine, 
+  method = "ranger",
+  trControl = trainControl(
+    method = "cv", 
+    number = 5, 
+    verboseIter = TRUE
+  )
+)
+
+# Print model to console
+model
+
+# Plot model
+plot(model)
+
+################################################################################################
+
+#### glmnet models ##############
+
+#Classification problems are a little more complicated than regression problems because you have to provide a 
+#custom summaryFunction to the train() function to use the AUC metric to rank your models. Start by making a custom 
+#trainControl, as you did in the previous chapter. Be sure to set classProbs = TRUE, otherwise the twoClassSummary 
+#for summaryFunction will break.
+
+# Create custom trainControl: myControl
+myControl <- trainControl(
+  method = "cv", 
+  number = 10,
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE, # IMPORTANT!
+  verboseIter = TRUE
+)
+
+# Fit glmnet model: model
+model <- train(
+  y ~ ., 
+  overfit,
+  method = "glmnet",
+  trControl = myControl
+)
+
+# Print model to console
+model
+
+# Print maximum ROC statistic
+max(model[["results"]][["ROC"]])
+
+# Train glmnet with custom trainControl and tuning: model
+model <- train(
+  y ~ ., 
+  overfit,
+  tuneGrid = expand.grid(
+    alpha = 0:1,
+    lambda = seq(0.0001, 1, length = 20)
+  ),
+  method = "glmnet",
+  trControl = myControl
+)
+
+# Print model to console
+model
+
+# Print maximum ROC statistic
+max(model[["results"]][["ROC"]])
 
 
 
+###############################################################################
+# Meadian and KNN Imputation
 
+# Apply median imputation: median_model
+median_model <- train(
+  x = breast_cancer_x, 
+  y = breast_cancer_y,
+  method = "glm",
+  trControl = myControl,
+  preProcess = "medianImpute"
+)
+
+# Apply KNN imputation: knn_model
+knn_model <- train(
+  x = breast_cancer_x, 
+  y = breast_cancer_y,
+  method = "glm",
+  trControl = myControl,
+  preProcess = "knnImpute"
+)
+
+# Print knn_model to console
+knn_model
+
+# Combine multiple preprocessing methods to improve model performance:
+
+# Update model with standardization
+model <- train(
+  x = breast_cancer_x, 
+  y = breast_cancer_y,
+  method = "glm",
+  trControl = myControl,
+  preProcess = c("center", "scale", "medianImpute", "pca")
+)
+
+# check rmse 
+min(model$results$RMSE)
+
+
+#################################### Comparing Models ####################
+
+# Create custom indices: myFolds
+myFolds <- createFolds(churn_y, k = 5)
+
+# Create reusable trainControl object: myControl
+myControl <- trainControl(
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE, # IMPORTANT!
+  verboseIter = TRUE,
+  savePredictions = TRUE,
+  index = myFolds
+)
+
+
+# Create model_list
+model_list <- list(item1 = model_glmnet, item2 = model_rf)
+
+# Pass model_list to resamples(): resamples
+resamples <- resamples(model_list)
+
+# Summarize the results
+summary(resamples)
